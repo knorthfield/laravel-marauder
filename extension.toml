@@ -1,0 +1,11 @@
+id = "laravel-marauder"
+name = "Laravel Marauder"
+version = "0.1.0"
+schema_version = 1
+authors = ["Kris Northfield"]
+description = "Cmd+click on view() to open Laravel blade files"
+repository = "https://github.com/knorthfield/laravel-marauder"
+
+[language_servers.laravel-marauder]
+name = "Laravel Marauder"
+language = "PHP"

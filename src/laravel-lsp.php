@@ -218,8 +218,8 @@ class LaravelMarauder
     private function getViewCompletions(string $line): ?array
     {
         $patterns = [
-            self::VIEW_COMPLETION_PATTERN,
             self::ROUTE_VIEW_COMPLETION_PATTERN,
+            self::VIEW_COMPLETION_PATTERN,
         ];
 
         foreach ($patterns as $pattern) {

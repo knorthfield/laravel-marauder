@@ -3,7 +3,7 @@
 
 /**
  * Laravel Marauder - Zed Extension
- * Provides go-to-definition and auto-completion for Laravel Blade views.
+ * Provides go-to-definition, auto-completion, and diagnostics for Laravel Blade views.
  */
 
 class LaravelMarauder
@@ -80,6 +80,15 @@ class LaravelMarauder
         fflush(STDOUT);
     }
 
+    private function notify(string $method, array $params): void
+    {
+        $this->send([
+            'jsonrpc' => '2.0',
+            'method' => $method,
+            'params' => $params,
+        ]);
+    }
+
     private function handleRequest(array $request): ?array
     {
         $method = $request['method'] ?? '';
@@ -98,6 +107,7 @@ class LaravelMarauder
             'textDocument/didChange' => $this->didChange($params),
             'textDocument/definition' => $this->definition($params),
             'textDocument/completion' => $this->completion($params),
+            'textDocument/codeAction' => $this->codeAction($params),
             default => null,
         };
 
@@ -122,6 +132,7 @@ class LaravelMarauder
                 'completionProvider' => [
                     'triggerCharacters' => ["'", '"', '.'],
                 ],
+                'codeActionProvider' => true,
                 'textDocumentSync' => [
                     'openClose' => true,
                     'change' => 1,
@@ -145,6 +156,8 @@ class LaravelMarauder
             $this->viewCache = null;
         }
 
+        $this->publishDiagnostics($uri, $text);
+
         return null;
     }
 
@@ -153,6 +166,11 @@ class LaravelMarauder
         $uri = $params['textDocument']['uri'] ?? '';
 
         unset($this->documents[$uri]);
+
+        $this->notify('textDocument/publishDiagnostics', [
+            'uri' => $uri,
+            'diagnostics' => [],
+        ]);
 
         return null;
     }
@@ -170,6 +188,10 @@ class LaravelMarauder
 
         if (str_contains($uri, '.blade.php')) {
             $this->viewCache = null;
+        }
+
+        if (isset($this->documents[$uri])) {
+            $this->publishDiagnostics($uri, $this->documents[$uri]);
         }
 
         return null;
@@ -213,6 +235,112 @@ class LaravelMarauder
         $line = substr($lines[$lineNumber], 0, $character);
 
         return $this->getViewCompletions($line);
+    }
+
+    private function publishDiagnostics(string $uri, string $content): void
+    {
+        $diagnostics = [];
+        $lines = explode("\n", $content);
+        $patterns = [
+            self::VIEW_PATTERN,
+            self::ROUTE_VIEW_PATTERN,
+        ];
+
+        foreach ($lines as $lineNumber => $line) {
+            foreach ($patterns as $pattern) {
+                if (!preg_match_all($pattern, $line, $matches, PREG_OFFSET_CAPTURE)) {
+                    continue;
+                }
+
+                foreach ($matches[1] as [$viewName, $offset]) {
+                    if ($this->resolveViewPath($viewName) === null) {
+                        $diagnostics[] = [
+                            'range' => [
+                                'start' => ['line' => $lineNumber, 'character' => $offset],
+                                'end' => ['line' => $lineNumber, 'character' => $offset + strlen($viewName)],
+                            ],
+                            'severity' => 2, // Warning
+                            'source' => 'laravel-marauder',
+                            'message' => "View '{$viewName}' not found",
+                            'data' => ['viewName' => $viewName],
+                        ];
+                    }
+                }
+            }
+        }
+
+        $this->notify('textDocument/publishDiagnostics', [
+            'uri' => $uri,
+            'diagnostics' => $diagnostics,
+        ]);
+    }
+
+    private function codeAction(array $params): array
+    {
+        $uri = $params['textDocument']['uri'] ?? '';
+        $diagnostics = $params['context']['diagnostics'] ?? [];
+        $actions = [];
+
+        foreach ($diagnostics as $diagnostic) {
+            if (($diagnostic['source'] ?? '') !== 'laravel-marauder') {
+                continue;
+            }
+
+            $viewName = $diagnostic['data']['viewName'] ?? null;
+            if ($viewName === null) {
+                continue;
+            }
+
+            $viewPath = $this->getViewFilePath($viewName);
+
+            $actions[] = [
+                'title' => "Create view '{$viewName}'",
+                'kind' => 'quickfix',
+                'diagnostics' => [$diagnostic],
+                'edit' => [
+                    'documentChanges' => [
+                        [
+                            'kind' => 'create',
+                            'uri' => 'file://' . $viewPath,
+                        ],
+                        [
+                            'textDocument' => [
+                                'uri' => 'file://' . $viewPath,
+                                'version' => null,
+                            ],
+                            'edits' => [
+                                [
+                                    'range' => [
+                                        'start' => ['line' => 0, 'character' => 0],
+                                        'end' => ['line' => 0, 'character' => 0],
+                                    ],
+                                    'newText' => $this->getViewTemplate($viewName),
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ];
+        }
+
+        return $actions;
+    }
+
+    private function getViewFilePath(string $viewName): string
+    {
+        $relativePath = str_replace('.', '/', $viewName);
+        return $this->rootPath . '/resources/views/' . $relativePath . '.blade.php';
+    }
+
+    private function getViewTemplate(string $viewName): string
+    {
+        $title = str_replace(['.', '-', '_'], ' ', $viewName);
+        $title = ucwords($title);
+
+        return <<<BLADE
+{{-- {$viewName} --}}
+
+BLADE;
     }
 
     private function getViewCompletions(string $line): ?array

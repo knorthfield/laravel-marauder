@@ -1,11 +1,13 @@
 # Laravel Marauder
 
-A Zed extension that provides go-to-definition and auto-completion for Laravel Blade views.
+A Zed extension that provides intelligent Blade view support for Laravel projects.
 
 ## Features
 
 - **Go-to-definition**: Cmd+click on `view('...')` or `Route::view()` to jump to the Blade template
-- **Auto-completion**: Get suggestions for view names as you type in `view()` or `Route::view()` calls
+- **Auto-completion**: Get suggestions for view names as you type
+- **Diagnostics**: Warnings when referencing views that don't exist
+- **Quick fix**: Create missing view files with one click
 - Works with dot-notation view names (e.g., `view('pages.home')` → `resources/views/pages/home.blade.php`)
 
 ## Installation
@@ -37,6 +39,15 @@ Start typing a view name inside `view()` or `Route::view()` to get suggestions:
 
 ```php
 return view('dash|');  // Shows: dashboard, dashboard.index, dashboard.settings, etc.
+```
+
+### Diagnostics & Quick Fix
+
+When you reference a view that doesn't exist, you'll see a warning. Click on the warning and select "Create view" to automatically create the missing Blade file:
+
+```php
+return view('pages.missing');  // ⚠️ Warning: View 'pages.missing' not found
+                               // 💡 Quick fix: Create view 'pages.missing'
 ```
 
 ## License

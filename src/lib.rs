@@ -4,11 +4,31 @@ use zed_extension_api::{self as zed, LanguageServerId, Result};
 const LSP_SCRIPT: &str = include_str!("laravel-lsp.php");
 const LSP_FILENAME: &str = "laravel-lsp.php";
 
-struct LaravelViewExtension {
+struct LaravelExtension {
     script_path: Option<String>,
 }
 
-impl zed::Extension for LaravelViewExtension {
+impl LaravelExtension {
+    fn ensure_script_exists(&mut self) -> Result<String> {
+        if let Some(path) = &self.script_path {
+            return Ok(path.clone());
+        }
+
+        fs::write(LSP_FILENAME, LSP_SCRIPT)
+            .map_err(|e| format!("Failed to write LSP script: {e}"))?;
+
+        let path = std::env::current_dir()
+            .map_err(|e| format!("Failed to get current directory: {e}"))?
+            .join(LSP_FILENAME)
+            .to_string_lossy()
+            .into_owned();
+
+        self.script_path = Some(path.clone());
+        Ok(path)
+    }
+}
+
+impl zed::Extension for LaravelExtension {
     fn new() -> Self {
         Self { script_path: None }
     }
@@ -18,22 +38,7 @@ impl zed::Extension for LaravelViewExtension {
         _language_server_id: &LanguageServerId,
         _worktree: &zed::Worktree,
     ) -> Result<zed::Command> {
-        let script_path = match &self.script_path {
-            Some(path) => path.clone(),
-            None => {
-                fs::write(LSP_FILENAME, LSP_SCRIPT)
-                    .map_err(|e| format!("failed to write LSP script: {e}"))?;
-
-                let abs_path = std::env::current_dir()
-                    .map_err(|e| format!("failed to get current dir: {e}"))?
-                    .join(LSP_FILENAME)
-                    .to_string_lossy()
-                    .to_string();
-
-                self.script_path = Some(abs_path.clone());
-                abs_path
-            }
-        };
+        let script_path = self.ensure_script_exists()?;
 
         Ok(zed::Command {
             command: "/usr/bin/env".into(),
@@ -43,4 +48,4 @@ impl zed::Extension for LaravelViewExtension {
     }
 }
 
-zed::register_extension!(LaravelViewExtension);
+zed::register_extension!(LaravelExtension);

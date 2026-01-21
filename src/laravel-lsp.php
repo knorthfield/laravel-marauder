@@ -450,7 +450,8 @@ BLADE;
 
                 $viewPath = $this->resolveViewPath($viewName);
                 if ($viewPath === null) {
-                    continue;
+                    $this->createViewFile($viewName);
+                    $viewPath = $this->getViewFilePath($viewName);
                 }
 
                 return $this->createLocationResponse($viewPath);

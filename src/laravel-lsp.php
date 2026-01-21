@@ -3,13 +3,14 @@
 
 /**
  * Laravel Marauder - Zed Extension
- * Provides go-to-definition for view() calls in Laravel projects.
+ * Provides go-to-definition for view() and Route::view() calls in Laravel projects.
  */
 
 class LaravelMarauder
 {
     private const VERSION = '0.1.0';
     private const VIEW_PATTERN = '/\bview\s*\(\s*[\'"]([^\'"]+)[\'"]/';
+    private const ROUTE_VIEW_PATTERN = '/Route\s*::\s*view\s*\(\s*[\'"][^\'"]*[\'"]\s*,\s*[\'"]([^\'"]+)[\'"]/';
 
     private string $rootPath = '';
     private array $documents = [];
@@ -180,23 +181,30 @@ class LaravelMarauder
 
     private function findViewDefinition(string $line, int $character): ?array
     {
-        if (!preg_match_all(self::VIEW_PATTERN, $line, $matches, PREG_OFFSET_CAPTURE)) {
-            return null;
-        }
+        $patterns = [
+            self::VIEW_PATTERN,
+            self::ROUTE_VIEW_PATTERN,
+        ];
 
-        foreach ($matches[1] as [$viewName, $offset]) {
-            $isWithinRange = $character >= $offset && $character <= $offset + strlen($viewName);
-
-            if (!$isWithinRange) {
+        foreach ($patterns as $pattern) {
+            if (!preg_match_all($pattern, $line, $matches, PREG_OFFSET_CAPTURE)) {
                 continue;
             }
 
-            $viewPath = $this->resolveViewPath($viewName);
-            if ($viewPath === null) {
-                continue;
-            }
+            foreach ($matches[1] as [$viewName, $offset]) {
+                $isWithinRange = $character >= $offset && $character <= $offset + strlen($viewName);
 
-            return $this->createLocationResponse($viewPath);
+                if (!$isWithinRange) {
+                    continue;
+                }
+
+                $viewPath = $this->resolveViewPath($viewName);
+                if ($viewPath === null) {
+                    continue;
+                }
+
+                return $this->createLocationResponse($viewPath);
+            }
         }
 
         return null;

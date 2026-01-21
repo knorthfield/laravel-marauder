@@ -4,7 +4,7 @@ A Zed extension that provides intelligent Blade view support for Laravel project
 
 ## Features
 
-- **Go-to-definition**: Cmd+click on `view('...')` or `Route::view()` to jump to the Blade template
+- **Go-to-definition**: Cmd+click on `view('...')` or `Route::view()` to jump to the Blade template (creates it if missing)
 - **Auto-completion**: Get suggestions for view names as you type
 - **Diagnostics**: Warnings when referencing views that don't exist
 - **Quick fix**: Create missing view files with one click
@@ -23,7 +23,7 @@ Install from the Zed extension marketplace by searching for "Laravel Marauder".
 
 ### Go-to-definition
 
-In any PHP file, hold Cmd (macOS) or Ctrl (Linux) and click on a view name:
+In any PHP file, hold Cmd (macOS) or Ctrl (Linux) and click on a view name to open it. If the view doesn't exist, it will be created automatically:
 
 ```php
 return view('dashboard.index');
@@ -31,6 +31,9 @@ return view('dashboard.index');
 
 Route::view('/', 'home');
 //               ^^^^^^ Cmd+click to open resources/views/home.blade.php
+
+return view('new.page');
+//          ^^^^^^^^^^ Cmd+click creates resources/views/new/page.blade.php and opens it
 ```
 
 ### Auto-completion

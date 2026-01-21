@@ -108,6 +108,7 @@ class LaravelMarauder
             'textDocument/definition' => $this->definition($params),
             'textDocument/completion' => $this->completion($params),
             'textDocument/codeAction' => $this->codeAction($params),
+            'workspace/executeCommand' => $this->executeCommand($params),
             default => null,
         };
 
@@ -133,6 +134,9 @@ class LaravelMarauder
                     'triggerCharacters' => ["'", '"', '.'],
                 ],
                 'codeActionProvider' => true,
+                'executeCommandProvider' => [
+                    'commands' => ['laravel-marauder.createView'],
+                ],
                 'textDocumentSync' => [
                     'openClose' => true,
                     'change' => 1,
@@ -277,7 +281,6 @@ class LaravelMarauder
 
     private function codeAction(array $params): array
     {
-        $uri = $params['textDocument']['uri'] ?? '';
         $diagnostics = $params['context']['diagnostics'] ?? [];
         $actions = [];
 
@@ -291,39 +294,47 @@ class LaravelMarauder
                 continue;
             }
 
-            $viewPath = $this->getViewFilePath($viewName);
-
             $actions[] = [
                 'title' => "Create view '{$viewName}'",
                 'kind' => 'quickfix',
                 'diagnostics' => [$diagnostic],
-                'edit' => [
-                    'documentChanges' => [
-                        [
-                            'kind' => 'create',
-                            'uri' => 'file://' . $viewPath,
-                        ],
-                        [
-                            'textDocument' => [
-                                'uri' => 'file://' . $viewPath,
-                                'version' => null,
-                            ],
-                            'edits' => [
-                                [
-                                    'range' => [
-                                        'start' => ['line' => 0, 'character' => 0],
-                                        'end' => ['line' => 0, 'character' => 0],
-                                    ],
-                                    'newText' => $this->getViewTemplate($viewName),
-                                ],
-                            ],
-                        ],
-                    ],
+                'command' => [
+                    'title' => "Create view '{$viewName}'",
+                    'command' => 'laravel-marauder.createView',
+                    'arguments' => [$viewName],
                 ],
             ];
         }
 
         return $actions;
+    }
+
+    private function executeCommand(array $params): ?array
+    {
+        $command = $params['command'] ?? '';
+        $arguments = $params['arguments'] ?? [];
+
+        if ($command === 'laravel-marauder.createView' && isset($arguments[0])) {
+            $viewName = $arguments[0];
+            $this->createViewFile($viewName);
+        }
+
+        return null;
+    }
+
+    private function createViewFile(string $viewName): void
+    {
+        $viewPath = $this->getViewFilePath($viewName);
+        $directory = dirname($viewPath);
+
+        if (!is_dir($directory)) {
+            mkdir($directory, 0755, true);
+        }
+
+        if (!file_exists($viewPath)) {
+            file_put_contents($viewPath, $this->getViewTemplate($viewName));
+            $this->viewCache = null;
+        }
     }
 
     private function getViewFilePath(string $viewName): string

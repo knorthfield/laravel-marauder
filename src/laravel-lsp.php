@@ -3,7 +3,7 @@
 
 /**
  * Laravel Marauder - Zed Extension
- * Provides go-to-definition for view() and Route::view() calls in Laravel projects.
+ * Provides go-to-definition and auto-completion for Laravel Blade views.
  */
 
 class LaravelMarauder
@@ -11,9 +11,12 @@ class LaravelMarauder
     private const VERSION = '0.1.0';
     private const VIEW_PATTERN = '/\bview\s*\(\s*[\'"]([^\'"]+)[\'"]/';
     private const ROUTE_VIEW_PATTERN = '/Route\s*::\s*view\s*\(\s*[\'"][^\'"]*[\'"]\s*,\s*[\'"]([^\'"]+)[\'"]/';
+    private const VIEW_COMPLETION_PATTERN = '/\bview\s*\(\s*[\'"]([^\'"]*)/';
+    private const ROUTE_VIEW_COMPLETION_PATTERN = '/Route\s*::\s*view\s*\(\s*[\'"][^\'"]*[\'"]\s*,\s*[\'"]([^\'"]*)/';
 
     private string $rootPath = '';
     private array $documents = [];
+    private ?array $viewCache = null;
 
     public function run(): void
     {
@@ -94,6 +97,7 @@ class LaravelMarauder
             'textDocument/didClose' => $this->didClose($params),
             'textDocument/didChange' => $this->didChange($params),
             'textDocument/definition' => $this->definition($params),
+            'textDocument/completion' => $this->completion($params),
             default => null,
         };
 
@@ -115,6 +119,9 @@ class LaravelMarauder
         return [
             'capabilities' => [
                 'definitionProvider' => true,
+                'completionProvider' => [
+                    'triggerCharacters' => ["'", '"', '.'],
+                ],
                 'textDocumentSync' => [
                     'openClose' => true,
                     'change' => 1,
@@ -133,6 +140,10 @@ class LaravelMarauder
         $text = $params['textDocument']['text'] ?? '';
 
         $this->documents[$uri] = $text;
+
+        if (str_contains($uri, '.blade.php')) {
+            $this->viewCache = null;
+        }
 
         return null;
     }
@@ -157,6 +168,10 @@ class LaravelMarauder
             }
         }
 
+        if (str_contains($uri, '.blade.php')) {
+            $this->viewCache = null;
+        }
+
         return null;
     }
 
@@ -177,6 +192,102 @@ class LaravelMarauder
         }
 
         return $this->findViewDefinition($lines[$lineNumber], $character);
+    }
+
+    private function completion(array $params): ?array
+    {
+        $uri = $params['textDocument']['uri'] ?? '';
+        $lineNumber = $params['position']['line'] ?? 0;
+        $character = $params['position']['character'] ?? 0;
+
+        $content = $this->documents[$uri] ?? $this->readFile($uri);
+        if ($content === null) {
+            return null;
+        }
+
+        $lines = explode("\n", $content);
+        if (!isset($lines[$lineNumber])) {
+            return null;
+        }
+
+        $line = substr($lines[$lineNumber], 0, $character);
+
+        return $this->getViewCompletions($line);
+    }
+
+    private function getViewCompletions(string $line): ?array
+    {
+        $patterns = [
+            self::VIEW_COMPLETION_PATTERN,
+            self::ROUTE_VIEW_COMPLETION_PATTERN,
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $line, $matches)) {
+                $prefix = $matches[1] ?? '';
+                return $this->buildCompletionList($prefix);
+            }
+        }
+
+        return null;
+    }
+
+    private function buildCompletionList(string $prefix): array
+    {
+        $views = $this->getAvailableViews();
+        $items = [];
+
+        foreach ($views as $viewName) {
+            if ($prefix === '' || str_starts_with($viewName, $prefix)) {
+                $items[] = [
+                    'label' => $viewName,
+                    'kind' => 17, // File
+                    'insertText' => $viewName,
+                ];
+            }
+        }
+
+        return $items;
+    }
+
+    private function getAvailableViews(): array
+    {
+        if ($this->viewCache !== null) {
+            return $this->viewCache;
+        }
+
+        $viewsPath = $this->rootPath . '/resources/views';
+        if (!is_dir($viewsPath)) {
+            return [];
+        }
+
+        $this->viewCache = $this->scanViewDirectory($viewsPath, '');
+
+        return $this->viewCache;
+    }
+
+    private function scanViewDirectory(string $basePath, string $prefix): array
+    {
+        $views = [];
+        $items = scandir($basePath);
+
+        foreach ($items as $item) {
+            if ($item === '.' || $item === '..') {
+                continue;
+            }
+
+            $fullPath = $basePath . '/' . $item;
+
+            if (is_dir($fullPath)) {
+                $newPrefix = $prefix === '' ? $item : $prefix . '.' . $item;
+                $views = array_merge($views, $this->scanViewDirectory($fullPath, $newPrefix));
+            } elseif (str_ends_with($item, '.blade.php')) {
+                $viewName = substr($item, 0, -10); // Remove .blade.php
+                $views[] = $prefix === '' ? $viewName : $prefix . '.' . $viewName;
+            }
+        }
+
+        return $views;
     }
 
     private function findViewDefinition(string $line, int $character): ?array
